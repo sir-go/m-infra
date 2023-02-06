@@ -1,0 +1,63 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service }}"
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    app.kubernetes.io/component: {{ .Chart.Name }}
+    app.kubernetes.io/part-of: {{ .Values.global.project }}
+    env: "{{ .Values.global.environment }}"
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+  revisionHistoryLimit: {{ .Values.global.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      name: {{ .Chart.Name }}
+      labels:
+        app: {{ .Chart.Name }}
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9113"
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.global.image.repo }}{{ .Values.image }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          volumeMounts:
+            - name: {{ .Values.service.nginx.configMapName }}
+              mountPath: {{ .Values.service.nginx.confPath }}/{{ .Values.service.nginx.confFileName }}
+              subPath: {{ .Values.service.nginx.confFileName }}
+              readOnly: true
+          livenessProbe: {{ toYaml .Values.service.probes | nindent 14 }}
+          startupProbe: {{ toYaml .Values.service.probes | nindent 14 }}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          ports:
+            - name: {{ .Chart.Name }}
+              containerPort: {{ .Values.service.port }}
+        - name: exporter
+          image: {{ .Values.exporterImage }}
+          args:
+            - -nginx.scrape-uri=http://localhost/stub_status
+      volumes:
+        - name: {{ .Values.service.nginx.configMapName }}
+          configMap:
+            name: {{ .Values.service.nginx.configMapName }}
+            items:
+              - key: {{ .Values.service.nginx.confFileName }}
+                path: {{ .Values.service.nginx.confFileName }}
+      imagePullSecrets:
+        {{- range $name := .Values.global.imagePullSecrets }}
+        - name: {{ $name }}
+        {{- end }}

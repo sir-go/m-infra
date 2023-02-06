@@ -1,0 +1,109 @@
+prometheus:
+  alertmanager:
+    fullnameOverride: alertmanager
+    persistentVolume:
+      size: 1Gi
+    service:
+        servicePort: 9093
+  server:
+    fullnameOverride: prometheus
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt"
+        kubernetes.io/tls-acme: "true"
+      hosts: []
+      tls:
+       - secretName: v-prometheus-tls
+         hosts: []
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+      requests:
+        cpu: "1"
+        memory: 1Gi
+    persistentVolume:
+      size: 2Gi
+    service:
+        servicePort: 9090
+    alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager:9093
+  pushgateway:
+    enabled: false
+  alertmanagerFiles:
+    alertmanager.yml:
+      global:
+        slack_api_url: 'https://hooks.slack.com/services/----------'
+      receivers:
+        - name: slack
+          slack_configs:
+            - channel: '#notifications'
+              send_resolved: true
+              text: "Store: {{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
+      route:
+        group_wait: 10s
+        group_interval: 5m
+        receiver: slack
+        repeat_interval: 3h
+  serverFiles:
+    alerting_rules.yml:
+      groups:
+        - name: Instances
+          rules:
+            - alert: Backend Instance Down
+              expr: (sum(up{app="backend"}) by (app) or on() vector(0)) < 1
+              for: 1m
+              annotations:
+                description: '[CRIT] Backend Instance has been down > 1 min'
+            - alert: Frontend Instance Down
+              expr: (sum(up{app="frontend"}) by (app) or on() vector(0)) < 1
+              for: 1m
+              annotations:
+                description: '[CRIT] Frontend Instance has been down > 1 min'
+
+grafana:
+  fullnameOverride: grafana
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt"
+      kubernetes.io/tls-acme: "true"
+    hosts: []
+    tls:
+     - secretName: v-grafana-tls
+       hosts: []
+  datasources:
+   datasources.yaml:
+     apiVersion: 1
+     datasources:
+     - name: Prometheus
+       type: prometheus
+       url: http://prometheus:9090
+       access: proxy
+       isDefault: true
+     - name: Loki
+       type: loki
+       url: http://loki:3100
+       access: proxy
+       isDefault: false
+  persistence:
+    type: pvc
+    enabled: true
+    size: 1Gi
+
+loki-stack:
+  loki:
+    fullnameOverride: loki
+    enabled: true
+    isDefault: true
+
+  promtail:
+    config:
+      clients:
+        - url: http://loki:3100/loki/api/v1/push
+    fullnameOverride: promtail

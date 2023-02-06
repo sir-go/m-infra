@@ -1,0 +1,62 @@
+global:
+  project: store
+  environment: production
+  image:
+    repo: gitlab.----/store/
+    pullPolicy: IfNotPresent
+  revisionHistoryLimit: 5
+  imagePullSecrets: [regcreds]
+  regcreds: ""
+
+backend:
+  image: backend:latest
+  replicaCount: 2
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 20%
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1025Mi
+      cpu: 2000m
+  service:
+    type: ClusterIP
+    port: 8081
+    probes:
+      httpGet:
+        path: /health
+        port: 8081
+      initialDelaySeconds: 25
+      periodSeconds: 30
+      timeoutSeconds: 2
+      failureThreshold: 6
+
+frontend:
+  fqdn: ----.ooguy.com
+  image: frontend:latest
+  exporterImage: nginx/nginx-prometheus-exporter:0.10.0
+  replicaCount: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1025Mi
+      cpu: 2000m
+  service:
+    type: ClusterIP
+    port: 80
+    probes:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 30
+      timeoutSeconds: 2
+      failureThreshold: 2
+    nginx:
+      configMapName: nginx-conf
+      confPath: /etc/nginx/conf.d
+      confFileName: default.conf
+      backendUrl: http://backend:8081
